@@ -46,11 +46,11 @@ def read_historical_rainfall(root_dir):
                     historical_rainfall.append(rainfallSeries(location, "historical", file_data))
     return historical_rainfall
 
-def find_all_projections(root_dir):
+def find_all_projections(root_dir, endWith=".csv"):
     all_projections = []
     for root, dirs, files in os.walk(root_dir):
         for file in files:
-            if file.endswith(".csv"):
+            if file.endswith(endWith):
                  all_projections.append(os.path.join(root, file))
     return all_projections
 
@@ -98,12 +98,18 @@ def read_projections(projections_filepaths):
                 counter = counter + 1
     return projections_data
 
-def perturb_rainfall(historical_data, rainfall_projections_filepaths, rainfall_projections_data):
+def perturb_rainfall(historical_data, rainfall_projections_filepaths, rainfall_projections_data, output_dir):
     locations = get_locations()
     years = get_years()
     time_periods = get_time_periods()
-    perturbed_rainfall = []
-    for projection_filepath in rainfall_projections_filepaths:
+    counter = 0
+    reportingNum = 20
+    reporting = [x / reportingNum for x in range(1, reportingNum + 1)]
+    for fileIdx, projection_filepath in enumerate(rainfall_projections_filepaths):
+        completion = fileIdx / len(rainfall_projections_filepaths)
+        if completion > reporting[counter]:
+            print('\t' + str(reporting[counter] * 100) + '% complete.')
+            counter += 1
         path, filename = os.path.split(projection_filepath)
         underscore_position = filename.find('_')
         projection_location = filename[:underscore_position]
@@ -111,64 +117,64 @@ def perturb_rainfall(historical_data, rainfall_projections_filepaths, rainfall_p
         for data in historical_data:
             if data.location == projection_location:
                 for year in years:
-                    perturbed_rainfall.append(rainfallSeries(projection_location, projection_name + '_' + year, data.rainfall))
+                    for rainfall_projection in rainfall_projections_data:
+                        if (projection_location == rainfall_projection.location
+                            and projection_name == rainfall_projection.projection_name
+                            and year == rainfall_projection.year
+                            and rainfall_projection.time_period == 'annual'):
+                            rainfall = [
+                                rainData(row.day, row.month, row.year, str(float(row.rain) * (1 + float(rainfall_projection.change)/100)))
+                                for row in data.rainfall
+                            ]
+                            #for row in data.rainfall:
+                            #    if rainfall_projection.projection_name == 'rcp_2.6_bcc-csm1-1-m' and row.year == '1986' and row.month == '1' and row.day == '14':
+                            #        temp3 = (float(row.rain) * (1 + float(rainfall_projection.change)/100))
+                            #        temp3
+                            #    row.rain = str(float(row.rain) * (1 + float(rainfall_projection.change)/100)) # annual change
+                            break
+                    timeSeries = rainfallSeries(projection_location, projection_name + '_' + year, rainfall)
+                    write_perturbed_data(output_dir, timeSeries)
                 break
-
-    n_rainfall_files = len(perturbed_rainfall)
-    report = [0.2, 0.4, 0.6, 0.8]
-    counter = 0
-    for rainfall in perturbed_rainfall:
-        counter = counter + 1
-        if len(report) > 0:
-            if counter / n_rainfall_files > report[0]:
-                print('\t' + str(counter) + '/' + str(n_rainfall_files) + ' files (' + str(report[0]*100) + '% complete)')
-                report.pop(0)
-        underscore_position = rainfall.name.rfind('_')
-        projection_name = rainfall.name[:underscore_position]
-        projection_year = rainfall.name[underscore_position+1:]
-        projections_found = 0
-        for rainfall_projection in rainfall_projections_data:
-            if (rainfall.location == rainfall_projection.location
-                and projection_name == rainfall_projection.projection_name
-                and projection_year == rainfall_projection.year):
-                projections_found = projections_found + 1
-                for row in rainfall.rainfall:
-                    if time_periods[int(row.month)] == rainfall_projection.time_period:
-                        if rainfall_projection.projection_name == 'rcp_2.6_bcc_csm1-1' and row.year == '1986' and row.month == '11' and row.day == '1':
-                            temp3 = (float(row.rain) * (1 + float(rainfall_projection.change)/100))
-                            temp3
-                        
-                        row.rain = str(float(row.rain) * (1 + float(rainfall_projection.change)/100))
-        if projections_found != 13:
-            print("Projections do not seem to match up with historical data")
-            print("location = " + rainfall.location)
-            print("projection = " + projection_name)
-            print("year = " + projection_year)
-    return perturbed_rainfall
 
 def ensure_directory_exists(directory):
     path = os.path.dirname(directory)
     if not os.path.exists(path):
         os.makedirs(path)
 
-def write_perturbed_data(output_dir, perturbed_data):
-    for data in perturbed_data:
-        filepath = output_dir + data.location + '_' + data.name + '.rai'
-        ensure_directory_exists(filepath)
-        output_str = ""
-        for row in data.rainfall:
-            output_str = output_str + row.day + "\t" + row.month + "\t" + row.year + "\t" + row.rain + "\n"
-        file = open(filepath, mode='w')
-        file.write(output_str)
-        file.close()
+def write_perturbed_data(output_dir, data):
+    #for data in perturbed_data:
+    #    filepath = output_dir + data.location + '_' + data.name + '.rai'
+    #    ensure_directory_exists(filepath)
+    #    output_str = ""
+    #    for row in data.rainfall:
+    #        output_str = output_str + row.day + "\t" + row.month + "\t" + row.year + "\t" + row.rain + "\n"
+    #    file = open(filepath, mode='w')
+    #    file.write(output_str)
+    #    file.close()
+    filepath = output_dir + data.location + '_' + data.name + '.rai'
+    ensure_directory_exists(filepath)
+    output_str = ""
+    for row in data.rainfall:
+        output_str = output_str + row.day + "\t" + row.month + "\t" + row.year + "\t" + row.rain + "\n"
+    output_str += "1\t1\t2006\t0.0\n2\t1\t2006\t0.0\n3\t1\t2006\t0.0\n"
+    file = open(filepath, mode='w')
+    file.write(output_str)
+    file.close()
+
+def addExtraDay(dir):
+    filepaths = find_all_projections(dir, '.rai')
+    extraDayStr = "1\t1\t2006\t0.0\n2\t1\t2006\t0.0\n3\t1\t2006\t0.0\n"
+    for filepath in filepaths:
+        with open(filepath, "a") as myfile:
+            myfile.write(extraDayStr)
 
 if __name__ == "__main__":
-    historical_dir = "C:\\Users\\a1630736\\Dropbox\\_PhD\\Historical Data\\raindata\\"
-    rainfall_projections_dir = "C:\\Users\\a1630736\\Dropbox\\_PhD\\Climate Change Projections\\Restructured Data\\rainfall\\Complete Data\\"
-    evapotranspiration_projections_dir = "C:\\Users\\a1630736\\Dropbox\\_PhD\\Climate Change Projections\\Restructured Data\\evapotranspiration\\Complete Data\\"
+    historical_dir = "D:\\Dropbox\\_PhD\\Historical Data\\raindata\\"
+    rainfall_projections_dir = "D:\\Dropbox\\_PhD\\Climate Change Projections\\Restructured Data\\rainfall\\Complete Data\\"
+    evapotranspiration_projections_dir = "D:\\Dropbox\\_PhD\\Climate Change Projections\\Restructured Data\\evapotranspiration\\Complete Data\\"
     first_year = 1986
     final_year = 2005
-    output_dir = "C:\\Users\\a1630736\\Dropbox\\_PhD\\Climate Change Projections\\Perturbed Data\\"
+    output_dir = "D:\\Dropbox\\_PhD\\Climate Change Projections\\Annual Perturbed Data\\"
 
     print('Reading historical data...')
     historical_rainfall = read_historical_rainfall(historical_dir)
@@ -188,7 +194,4 @@ if __name__ == "__main__":
     rainfall_projections_data = read_projections(all_rainfall_projections) # [projection][time-period][year]
 
     print('Perturbing historical data...')
-    perturbed_rainfall = perturb_rainfall(filtered_historical_rainfall, all_rainfall_projections, rainfall_projections_data)
-
-    print('Writing perturbed rainfall to ' + output_dir)
-    write_perturbed_data(output_dir, perturbed_rainfall)
+    perturbed_rainfall = perturb_rainfall(filtered_historical_rainfall, all_rainfall_projections, rainfall_projections_data, output_dir)
